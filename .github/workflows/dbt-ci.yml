@@ -1,0 +1,102 @@
+name: dbt CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dbt/**"
+      - ".github/workflows/dbt-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "dbt/**"
+
+jobs:
+  dbt-build:
+    name: dbt build & test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: fintrade
+          POSTGRES_PASSWORD: fintrade123
+          POSTGRES_DB: fintrade
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-dbt
+
+      - name: Install dbt
+        run: pip install dbt-postgres==1.7.4
+
+      - name: Initialise warehouse schema
+        run: |
+          PGPASSWORD=fintrade123 psql \
+            -h localhost -U fintrade -d fintrade \
+            -f sql/init.sql
+
+      - name: Seed minimal test data
+        # Insert just enough rows so dbt relationship tests pass in CI.
+        run: |
+          PGPASSWORD=fintrade123 psql \
+            -h localhost -U fintrade -d fintrade << 'SQL'
+            INSERT INTO raw.stocks (symbol, company_name, sector, exchange) VALUES
+              ('AAPL', 'Apple Inc.',           'Technology', 'NASDAQ'),
+              ('MSFT', 'Microsoft Corporation','Technology', 'NASDAQ')
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO raw.accounts (account_id, user_name, email, account_type, balance) VALUES
+              ('ACC00001', 'Test User', 'test@example.com', 'individual', 50000)
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO raw.orders
+              (order_id, account_id, symbol, order_type, quantity, price, status, created_at)
+            VALUES
+              ('ORD000001', 'ACC00001', 'AAPL', 'buy', 10, 150.00, 'filled', NOW())
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO raw.trades
+              (trade_id, order_id, account_id, symbol, trade_type, quantity, price, total_amount, traded_at)
+            VALUES
+              ('TRD000001', 'ORD000001', 'ACC00001', 'AAPL', 'buy', 10, 150.00, 1500.00, NOW())
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO raw.daily_prices
+              (symbol, price_date, open_price, high_price, low_price, close_price, volume)
+            VALUES
+              ('AAPL', CURRENT_DATE,     150.00, 152.00, 149.00, 151.00, 1000000),
+              ('AAPL', CURRENT_DATE - 1, 148.00, 151.00, 147.00, 150.00, 900000),
+              ('MSFT', CURRENT_DATE,     300.00, 305.00, 298.00, 302.00, 800000)
+            ON CONFLICT DO NOTHING;
+          SQL
+
+      - name: dbt build (compile + run + test all models)
+        working-directory: dbt/fintrade
+        env:
+          DBT_HOST: localhost
+          DBT_PORT: 5432
+          DBT_USER: fintrade
+          DBT_PASSWORD: fintrade123
+          DBT_DBNAME: fintrade
+        run: |
+          dbt build --profiles-dir . --target ci

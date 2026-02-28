@@ -1,0 +1,70 @@
+version: 2
+
+models:
+  - name: mart_account_summary
+    description: "One row per account — balance, trade count, and total traded amount. Business-facing."
+    columns:
+      - name: account_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: account_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['individual', 'institutional']
+      - name: balance
+        tests:
+          - not_null
+          - positive_value
+      - name: total_trades
+        tests:
+          - not_null
+
+  - name: mart_daily_trading
+    description: "Daily trading volume and amount aggregated by symbol. Includes stock metadata."
+    columns:
+      - name: trade_date
+        tests:
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+      - name: total_trades
+        tests:
+          - not_null
+      - name: total_amount
+        tests:
+          - not_null
+
+  - name: mart_stock_performance
+    description: "One row per stock — latest price, all-time high/low, average close, total volume."
+    columns:
+      - name: symbol
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: company_name
+        tests:
+          - not_null
+      - name: sector
+        tests:
+          - not_null
+
+  - name: mart_sector_performance
+    description: "Sector-level aggregation — average price change, total volume, stock count per sector."
+    columns:
+      - name: sector
+        description: "Primary key — sector name."
+        tests:
+          - unique
+          - not_null
+      - name: stock_count
+        tests:
+          - not_null
+          - positive_value
+      - name: total_volume
+        tests:
+          - not_null

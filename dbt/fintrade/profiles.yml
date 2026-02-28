@@ -1,0 +1,25 @@
+fintrade:
+  target: dev
+  outputs:
+
+    # ── Local development (inside Docker, Airflow container)
+    dev:
+      type: postgres
+      host: postgres-warehouse
+      port: 5432
+      user: fintrade
+      password: fintrade123
+      dbname: fintrade
+      schema: staging
+      threads: 4
+
+    # ── CI environment (GitHub Actions — postgres service container)
+    ci:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_USER', 'fintrade') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'fintrade123') }}"
+      dbname: "{{ env_var('DBT_DBNAME', 'fintrade') }}"
+      schema: staging
+      threads: 2

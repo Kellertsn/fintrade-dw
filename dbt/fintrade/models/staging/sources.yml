@@ -1,0 +1,49 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    description: "Raw landing zone — data loaded directly from API ingestion and synthetic OLTP sources."
+
+    freshness:
+      warn_after: {count: 1, period: day}
+      error_after: {count: 2, period: day}
+    loaded_at_field: created_at
+
+    tables:
+      - name: accounts
+        description: "Trading accounts (synthetic data via Faker)."
+        columns:
+          - name: account_id
+            description: "Primary key."
+          - name: account_type
+            description: "individual or institutional."
+
+      - name: stocks
+        description: "Stock reference data (15 US equities)."
+        columns:
+          - name: symbol
+            description: "Ticker symbol, primary key."
+
+      - name: orders
+        description: "Trade orders placed by accounts."
+        columns:
+          - name: order_id
+            description: "Primary key."
+
+      - name: trades
+        description: "Executed trades (subset of filled/partial orders)."
+        columns:
+          - name: trade_id
+            description: "Primary key."
+
+      - name: daily_prices
+        description: "Daily OHLCV prices fetched from Alpha Vantage API, stored in S3 as Parquet then loaded here."
+        loaded_at_field: created_at
+        columns:
+          - name: id
+            description: "Surrogate key."
+          - name: symbol
+            description: "Foreign key to raw.stocks."
+          - name: price_date
+            description: "Trading date."

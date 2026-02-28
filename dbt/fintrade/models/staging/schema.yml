@@ -1,0 +1,169 @@
+version: 2
+
+models:
+  - name: stg_stocks
+    description: "Cleaned stock reference data."
+    columns:
+      - name: symbol
+        description: "Ticker symbol — primary key."
+        tests:
+          - unique
+          - not_null
+      - name: company_name
+        tests:
+          - not_null
+      - name: sector
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Technology', 'Finance', 'Healthcare', 'Energy', 'Consumer Discretionary', 'Consumer Staples']
+      - name: exchange
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['NASDAQ', 'NYSE']
+
+  - name: stg_accounts
+    description: "Cleaned trading account data."
+    columns:
+      - name: account_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: user_name
+        tests:
+          - not_null
+      - name: account_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['individual', 'institutional']
+      - name: balance
+        tests:
+          - not_null
+          - positive_value
+
+  - name: stg_orders
+    description: "Cleaned order data with computed order_amount."
+    columns:
+      - name: order_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: account_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_accounts')
+              field: account_id
+      - name: symbol
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_stocks')
+              field: symbol
+      - name: order_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['buy', 'sell']
+      - name: status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['filled', 'cancelled', 'partial']
+      - name: quantity
+        tests:
+          - not_null
+          - positive_value
+      - name: price
+        tests:
+          - not_null
+          - positive_value
+      - name: order_amount
+        tests:
+          - positive_value
+
+  - name: stg_trades
+    description: "Cleaned executed trade data."
+    columns:
+      - name: trade_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+      - name: account_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_accounts')
+              field: account_id
+      - name: symbol
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_stocks')
+              field: symbol
+      - name: trade_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['buy', 'sell']
+      - name: quantity
+        tests:
+          - not_null
+          - positive_value
+      - name: price
+        tests:
+          - not_null
+          - positive_value
+      - name: total_amount
+        tests:
+          - not_null
+          - positive_value
+
+  - name: stg_daily_prices
+    description: "Cleaned daily OHLCV prices with derived price_change metrics."
+    columns:
+      - name: price_id
+        description: "Surrogate key (from raw.daily_prices.id)."
+        tests:
+          - unique
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_stocks')
+              field: symbol
+      - name: price_date
+        tests:
+          - not_null
+      - name: open_price
+        tests:
+          - not_null
+          - positive_value
+      - name: high_price
+        tests:
+          - not_null
+          - positive_value
+      - name: low_price
+        tests:
+          - not_null
+          - positive_value
+      - name: close_price
+        tests:
+          - not_null
+          - positive_value
+      - name: volume
+        tests:
+          - not_null
+          - positive_value

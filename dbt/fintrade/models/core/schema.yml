@@ -1,0 +1,125 @@
+version: 2
+
+models:
+  - name: dim_stocks
+    description: "Stock dimension table — reference data for all traded equities."
+    columns:
+      - name: symbol
+        description: "Primary key — ticker symbol."
+        tests:
+          - unique
+          - not_null
+      - name: company_name
+        tests:
+          - not_null
+      - name: sector
+        tests:
+          - not_null
+      - name: exchange
+        tests:
+          - not_null
+
+  - name: dim_accounts
+    description: "Account dimension table — all trading accounts."
+    columns:
+      - name: account_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: account_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['individual', 'institutional']
+      - name: balance
+        tests:
+          - not_null
+          - positive_value
+
+  - name: fct_orders
+    description: "Fact table — all orders placed."
+    columns:
+      - name: order_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: account_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_accounts')
+              field: account_id
+      - name: symbol
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_stocks')
+              field: symbol
+      - name: quantity
+        tests:
+          - not_null
+          - positive_value
+      - name: price
+        tests:
+          - not_null
+          - positive_value
+
+  - name: fct_trades
+    description: "Fact table — executed trades only (filled or partial orders)."
+    columns:
+      - name: trade_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: account_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_accounts')
+              field: account_id
+      - name: symbol
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_stocks')
+              field: symbol
+      - name: total_amount
+        tests:
+          - not_null
+          - positive_value
+
+  - name: fct_daily_prices
+    description: "Incremental fact table — daily OHLCV prices. Only processes new dates on each run."
+    columns:
+      - name: price_id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_stocks')
+              field: symbol
+      - name: price_date
+        tests:
+          - not_null
+      - name: open_price
+        tests:
+          - positive_value
+      - name: high_price
+        tests:
+          - positive_value
+      - name: low_price
+        tests:
+          - positive_value
+      - name: close_price
+        tests:
+          - positive_value
+      - name: volume
+        tests:
+          - positive_value
