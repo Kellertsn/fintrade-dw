@@ -47,7 +47,7 @@ jobs:
           key: ${{ runner.os }}-pip-dbt
 
       - name: Install dbt
-        run: pip install dbt-postgres==1.7.4
+        run: pip install dbt-postgres==1.7.4 "protobuf>=4.21.0,<4.25.0"
 
       - name: Initialise warehouse schema
         run: |
