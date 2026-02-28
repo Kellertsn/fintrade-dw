@@ -189,7 +189,7 @@ fintrade-dw/
 ### 1. Clone & Configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/fintrade-dw.git
+git clone https://github.com/Kellertsn/fintrade-dw.git
 cd fintrade-dw
 cp .env.example .env
 # Edit .env and add your ALPHA_VANTAGE_API_KEY
