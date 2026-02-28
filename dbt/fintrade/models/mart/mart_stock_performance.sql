@@ -6,15 +6,21 @@ prices as (
     select * from {{ ref('fct_daily_prices') }}
 ),
 
-latest_price as (
-    select distinct on (symbol)
+ranked_prices as (
+    select
         symbol,
         price_date,
         close_price,
         price_change,
-        price_change_pct
+        price_change_pct,
+        row_number() over (partition by symbol order by price_date desc) as rn
     from prices
-    order by symbol, price_date desc
+),
+
+latest_price as (
+    select symbol, price_date, close_price, price_change, price_change_pct
+    from ranked_prices
+    where rn = 1
 ),
 
 stock_stats as (

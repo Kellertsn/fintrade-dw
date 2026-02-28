@@ -31,6 +31,7 @@ from datetime import date
 import boto3
 import pandas as pd
 import psycopg2
+from psycopg2.extras import execute_values
 import requests
 from faker import Faker
 from tenacity import (
@@ -153,11 +154,21 @@ def fetch_daily_prices(symbol: str) -> dict:
     resp.raise_for_status()
     data = resp.json()
 
-    # Detect soft rate-limit (API returns 200 with a "Note" field)
-    if "Note" in data or "Information" in data:
-        log.warning(f"Rate limit detected for {symbol}. Sleeping 65s...")
+    # Detect soft rate-limit: "Note" = per-minute burst limit, always retryable
+    if "Note" in data:
+        log.warning(f"[{symbol}] Per-minute rate limit hit. Sleeping 65s before retry...")
         time.sleep(65)
         raise requests.HTTPError("Rate limited — will retry")
+
+    # "Information" = daily quota exhausted OR invalid/demo API key
+    if "Information" in data:
+        msg = data["Information"]
+        if "demo" in msg.lower() or "api key" in msg.lower():
+            # Invalid or demo key — retrying wastes quota and time
+            raise ValueError(f"[{symbol}] Invalid or demo API key: {msg}")
+        log.warning(f"[{symbol}] Daily API quota exhausted. Sleeping 65s before retry...")
+        time.sleep(65)
+        raise requests.HTTPError("Daily quota exceeded — will retry")
 
     if "Time Series (Daily)" not in data:
         raise ValueError(f"Unexpected API response for {symbol}: {list(data.keys())}")
@@ -223,28 +234,28 @@ def load_prices_to_postgres(conn, df: pd.DataFrame):
 
     Idempotency: ON CONFLICT (symbol, price_date) DO NOTHING
     Re-running this function with the same data has no effect.
+
+    Uses execute_values() to send all rows in a single multi-value INSERT,
+    avoiding N round-trips to the database.
     """
-    inserted = 0
+    rows = list(
+        df[["symbol", "price_date", "open_price", "high_price",
+            "low_price", "close_price", "volume"]].itertuples(index=False, name=None)
+    )
     with conn.cursor() as cur:
-        for _, row in df.iterrows():
-            cur.execute(
-                """
-                INSERT INTO raw.daily_prices
-                    (symbol, price_date, open_price, high_price,
-                     low_price, close_price, volume)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (symbol, price_date) DO NOTHING
-                """,
-                (
-                    row["symbol"],      row["price_date"],
-                    row["open_price"],  row["high_price"],
-                    row["low_price"],   row["close_price"],
-                    row["volume"],
-                ),
-            )
-            inserted += cur.rowcount
+        execute_values(
+            cur,
+            """
+            INSERT INTO raw.daily_prices
+                (symbol, price_date, open_price, high_price,
+                 low_price, close_price, volume)
+            VALUES %s
+            ON CONFLICT (symbol, price_date) DO NOTHING
+            """,
+            rows,
+        )
     conn.commit()
-    log.info(f"  [DB] Inserted {inserted} new rows into raw.daily_prices")
+    log.info(f"  [DB] Batch-inserted {len(rows)} rows into raw.daily_prices")
 
 
 # ─────────────────────────────────────────────
@@ -357,33 +368,44 @@ def main(init: bool = False):
     s3   = get_s3_client()
     conn = psycopg2.connect(DB_CONN)
 
-    ensure_bucket(s3)
+    try:
+        ensure_bucket(s3)
 
-    if init:
-        log.info("--- [INIT] Loading static reference data ---")
-        load_stocks(conn)
-        load_accounts(conn)
-        load_orders_and_trades(conn)
+        if init:
+            log.info("--- [INIT] Loading static reference data ---")
+            load_stocks(conn)
+            load_accounts(conn)
+            load_orders_and_trades(conn)
 
-    log.info("--- Fetching market prices from Alpha Vantage ---")
-    failed = []
-    for symbol in SYMBOLS:
-        log.info(f"[{symbol}] Starting...")
-        try:
-            raw   = fetch_daily_prices(symbol)
-            save_json_to_s3(s3, symbol, raw)
-            df    = convert_to_parquet_and_upload(s3, symbol, raw)
-            load_prices_to_postgres(conn, df)
-        except Exception as exc:
-            # Log failure but continue processing remaining symbols.
-            # Airflow will retry the full task on the next scheduled run.
-            log.error(f"[{symbol}] Failed after retries: {exc}")
-            failed.append(symbol)
+        log.info("--- Fetching market prices from Alpha Vantage ---")
+        failed = []
+        for symbol in SYMBOLS:
+            log.info(f"[{symbol}] Starting...")
+            try:
+                raw = fetch_daily_prices(symbol)
+                save_json_to_s3(s3, symbol, raw)
+                df  = convert_to_parquet_and_upload(s3, symbol, raw)
+            except Exception as exc:
+                log.error(f"[{symbol}] S3 ingestion failed: {exc}")
+                failed.append(symbol)
+                time.sleep(12)
+                continue
 
-        # Respect Alpha Vantage free-tier limit (25 req/day, ~1 req per minute burst)
-        time.sleep(12)
+            try:
+                load_prices_to_postgres(conn, df)
+            except Exception as exc:
+                # S3 already has the data — the DB can be replayed from S3
+                # without consuming any Alpha Vantage API quota.
+                log.error(
+                    f"[{symbol}] PostgreSQL load failed: {exc}. "
+                    "S3 data is intact and can be replayed into the DB without consuming API quota."
+                )
+                failed.append(symbol)
 
-    conn.close()
+            # Respect Alpha Vantage free-tier limit (25 req/day, ~1 req per minute burst)
+            time.sleep(12)
+    finally:
+        conn.close()
 
     if failed:
         log.warning(f"Symbols with errors: {failed}")

@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
@@ -10,7 +11,7 @@ default_args = {
 }
 
 DBT_DIR      = "/opt/airflow/dbt/fintrade"
-DBT_BIN      = "/home/airflow/.local/bin/dbt"
+DBT_BIN      = os.getenv("DBT_BIN", "/home/airflow/.local/bin/dbt")
 DBT_PROFILES = f"--profiles-dir {DBT_DIR}"
 
 with DAG(
@@ -20,7 +21,7 @@ with DAG(
         "FinTrade daily pipeline: "
         "Alpha Vantage API → S3 (Parquet) → PostgreSQL → dbt staging → test → core → mart"
     ),
-    schedule_interval="@daily",
+    schedule="@daily",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["fintrade"],

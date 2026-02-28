@@ -13,7 +13,7 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
 
     # Warehouse connection
-    FINTRADE_DB_CONN: postgresql+psycopg2://fintrade:fintrade123@postgres-warehouse:5432/fintrade
+    FINTRADE_DB_CONN: postgresql+psycopg2://${POSTGRES_USER:-fintrade}:${POSTGRES_PASSWORD:-fintrade123}@postgres-warehouse:5432/${POSTGRES_DB:-fintrade}
 
     # Alpha Vantage API key (set in .env)
     ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
@@ -89,9 +89,9 @@ services:
     image: postgres:15
     container_name: fintrade_postgres_warehouse
     environment:
-      POSTGRES_USER: fintrade
-      POSTGRES_PASSWORD: fintrade123
-      POSTGRES_DB: fintrade
+      POSTGRES_USER: ${POSTGRES_USER:-fintrade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fintrade123}
+      POSTGRES_DB: ${POSTGRES_DB:-fintrade}
     ports:
       - "5432:5432"
     healthcheck:

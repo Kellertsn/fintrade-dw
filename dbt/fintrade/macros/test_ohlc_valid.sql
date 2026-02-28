@@ -1,7 +1,7 @@
 {% test ohlc_valid(model, column_name) %}
 
 -- Validates that high_price >= low_price and high_price >= open_price
-select id
+select price_id
 from (
     select
         {{ column_name }}        as price_id,
